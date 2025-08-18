@@ -12,7 +12,7 @@ from typing import Any, List, Mapping, Optional
 
 # --- LangChain Imports ---
 from langchain.prompts import ChatPromptTemplate
-from langchain_core.llms import LLM
+from langchain_core.language_models.llms import LLM
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
