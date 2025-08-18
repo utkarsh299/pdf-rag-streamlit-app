@@ -91,18 +91,37 @@ if uploaded_files and hf_token:
             model_kwargs: dict
 
             # This is the NEW, correct code
-            def __init__(self, repo_id: str, token: str, model_kwargs: dict = None):
-                # Prepare all the attributes in a dictionary first
-                all_model_kwargs = model_kwargs or {}
-                client = InferenceClient(model=repo_id, token=token)
+            # def __init__(self, repo_id: str, token: str, model_kwargs: dict = None):
+            #     # Prepare all the attributes in a dictionary first
+            #     all_model_kwargs = model_kwargs or {}
+            #     client = InferenceClient(model=repo_id, token=token)
                 
-                # Pass all required fields to the super constructor
+            #     # Pass all required fields to the super constructor
+            #     super().__init__(
+            #         repo_id=repo_id,
+            #         client=client,
+            #         model_kwargs=all_model_kwargs
+            #     )
+
+            # This is the NEW, bulletproof __init__ method
+            def __init__(self, repo_id: str, token: str, model_kwargs: dict = None):
+                all_model_kwargs = model_kwargs or {}
+                
+                # --- START OF THE FIX ---
+                # Construct the direct inference endpoint URL
+                endpoint_url = f"https://api-inference.huggingface.co/models/{repo_id}"
+                
+                # Initialize the client with the direct URL, bypassing the provider lookup
+                client = InferenceClient(model=endpoint_url, token=token)
+                # --- END OF THE FIX ---
+                
                 super().__init__(
                     repo_id=repo_id,
                     client=client,
                     model_kwargs=all_model_kwargs
                 )
-                
+
+            
             @property
             def _llm_type(self) -> str:
                 return "custom_huggingface_inference"
