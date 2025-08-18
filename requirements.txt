@@ -1,7 +1,8 @@
 streamlit
 langchain
 langchain-community
-chromadb
+chromadb==0.4.24
+pysqlite3-binary
 pypdf
 sentence-transformers
 huggingface_hub
