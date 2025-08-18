@@ -4,6 +4,7 @@ langchain-community
 chromadb==0.4.24
 pysqlite3-binary
 pypdf
+pymupdf  # <-- ADD THIS LINE
 sentence-transformers
 huggingface_hub
 transformers
