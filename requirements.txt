@@ -6,6 +6,7 @@ pysqlite3-binary
 pypdf
 sentence-transformers
 huggingface_hub==0.22.2
-transformers
+transformers==4.41.2
+tokenizers==0.19.1
 torch
 numpy==1.26.4
