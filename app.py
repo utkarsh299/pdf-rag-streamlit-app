@@ -107,6 +107,7 @@ if uploaded_files and hf_token:
             def _llm_type(self) -> str:
                 return "custom_huggingface_inference"
 
+            # This is the NEW, correct code
             def _call(
                 self,
                 prompt: str,
@@ -114,9 +115,11 @@ if uploaded_files and hf_token:
                 **kwargs: Any,
             ) -> str:
                 # The modern client uses the text_generation method
-                response = self.client.text_generation(prompt, **self.model_kwargs)
+                # We explicitly pass the model repository ID here to be safe.
+                response = self.client.text_generation(prompt, model=self.repo_id, **self.model_kwargs)
                 return response
 
+            
             @property
             def _identifying_params(self) -> Mapping[str, Any]:
                 """Get the identifying parameters."""
