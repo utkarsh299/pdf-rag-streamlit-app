@@ -90,12 +90,19 @@ if uploaded_files and hf_token:
             client: InferenceClient
             model_kwargs: dict
 
+            # This is the NEW, correct code
             def __init__(self, repo_id: str, token: str, model_kwargs: dict = None):
-                super().__init__()
-                self.repo_id = repo_id
-                self.client = InferenceClient(model=repo_id, token=token)
-                self.model_kwargs = model_kwargs or {}
-
+                # Prepare all the attributes in a dictionary first
+                all_model_kwargs = model_kwargs or {}
+                client = InferenceClient(model=repo_id, token=token)
+                
+                # Pass all required fields to the super constructor
+                super().__init__(
+                    repo_id=repo_id,
+                    client=client,
+                    model_kwargs=all_model_kwargs
+                )
+                
             @property
             def _llm_type(self) -> str:
                 return "custom_huggingface_inference"
