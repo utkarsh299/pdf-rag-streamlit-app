@@ -5,8 +5,8 @@ chromadb==0.4.24
 pysqlite3-binary
 pypdf
 sentence-transformers
-huggingface_hub==0.22.2
-transformers==4.41.2
-tokenizers==0.19.1
+huggingface_hub
+transformers
+tokenizers
 torch
 numpy==1.26.4
