@@ -76,23 +76,23 @@ if uploaded_files:
                 with open(os.path.join(temp_dir, uploaded_file.name), "wb") as f:
                     f.write(uploaded_file.getbuffer())
 
-            # with st.spinner("Loading and chunking documents..."):
-            #     loader = PyPDFDirectoryLoader(temp_dir)
-            #     docs = loader.load()
-            #     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            #     splits = text_splitter.split_documents(docs)
-            
             with st.spinner("Loading and chunking documents..."):
-                # --- START OF CHANGE ---
-                docs = []
-                for filename in os.listdir(temp_dir):
-                    if filename.endswith(".pdf"):
-                        loader = PyMuPDFLoader(os.path.join(temp_dir, filename))
-                        docs.extend(loader.load())
-                # --- END OF CHANGE ---
-                
+                loader = PyPDFDirectoryLoader(temp_dir)
+                docs = loader.load()
                 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
                 splits = text_splitter.split_documents(docs)
+            
+            # with st.spinner("Loading and chunking documents..."):
+            #     # --- START OF CHANGE ---
+            #     docs = []
+            #     for filename in os.listdir(temp_dir):
+            #         if filename.endswith(".pdf"):
+            #             loader = PyMuPDFLoader(os.path.join(temp_dir, filename))
+            #             docs.extend(loader.load())
+            #     # --- END OF CHANGE ---
+                
+            #     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+            #     splits = text_splitter.split_documents(docs)
             
             with st.spinner("Creating embeddings and vector store..."):
                 embeddings = HuggingFaceEmbeddings(model_name=embedding_model_name)
