@@ -8,3 +8,4 @@ sentence-transformers
 huggingface_hub
 transformers
 torch
+numpy==1.26.4
