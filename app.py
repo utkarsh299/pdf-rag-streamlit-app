@@ -24,9 +24,15 @@ from huggingface_hub import InferenceClient
 # --- App Configuration ---
 st.set_page_config(page_title="PDF RAG Assistant", layout="wide")
 st.title("📄 PDF RAG Assistant")
-st.markdown("""
-Welcome! Upload your PDFs (up to 10) and ask questions. This app uses open-source models for processing.
-""")
+st.markdown("Welcome! Upload your PDFs and ask questions about their content.")
+
+# --- Session State Initialization ---
+if "vectorstore" not in st.session_state:
+    st.session_state.vectorstore = None
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "last_retrieved_docs" not in st.session_state:
+    st.session_state.last_retrieved_docs = None
 
 # --- Sidebar for Configuration ---
 with st.sidebar:
@@ -38,7 +44,7 @@ with st.sidebar:
         "Choose a Language Model:",
         ("HuggingFaceH4/zephyr-7b-beta", "mistralai/Mixtral-8x7B-Instruct-v0.1", "google/gemma-2b-it"),
         index=0,
-        help="Zephyr is recommended as it's fast and reliable on the free tier."
+        help="Zephyr is recommended for speed and reliability."
     )
     
     st.markdown("### Embedding Model")
@@ -53,13 +59,16 @@ if uploaded_files and len(uploaded_files) > 10:
     st.warning("Please upload a maximum of 10 PDF files.")
     uploaded_files = None
 
-# --- Main Logic: Processing and Chat ---
-if uploaded_files and hf_token:
-    # Use a session state variable to store the vectorstore
-    if "vectorstore" not in st.session_state:
-        st.session_state.vectorstore = None
-
+# --- PDF Processing Button ---
+if uploaded_files:
     if st.button("Process PDFs"):
+        # FIX #2: Clear old vectorstore from session state if it exists
+        if st.session_state.vectorstore is not None:
+            st.session_state.vectorstore.delete_collection()
+            st.session_state.vectorstore = None
+            st.session_state.messages = []
+            st.session_state.last_retrieved_docs = None
+
         with tempfile.TemporaryDirectory() as temp_dir:
             for uploaded_file in uploaded_files:
                 with open(os.path.join(temp_dir, uploaded_file.name), "wb") as f:
@@ -73,57 +82,51 @@ if uploaded_files and hf_token:
 
             with st.spinner("Creating embeddings and vector store..."):
                 embeddings = HuggingFaceEmbeddings(model_name=embedding_model_name)
+                # Save the new vectorstore in session state
                 st.session_state.vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings)
                 st.success("PDFs processed and ready!")
 
-    if st.session_state.vectorstore:
-        retriever = st.session_state.vectorstore.as_retriever()
+# --- Main Chat Logic ---
+if st.session_state.vectorstore:
+    retriever = st.session_state.vectorstore.as_retriever()
 
-        # --- Custom LLM Class (Corrected) ---
-        class HuggingFaceChat(LLM):
-            client: InferenceClient
-            repo_id: str
-            model_kwargs: dict
+    # --- Custom LLM Class (remains the same) ---
+    class HuggingFaceChat(LLM):
+        client: InferenceClient
+        repo_id: str
+        model_kwargs: dict
 
-            def __init__(self, repo_id: str, token: str, model_kwargs: dict = None):
-                super().__init__(
-                    client=InferenceClient(token=token),
-                    repo_id=repo_id,
-                    model_kwargs=model_kwargs or {}
-                )
+        def __init__(self, repo_id: str, token: str, model_kwargs: dict = None):
+            super().__init__(
+                client=InferenceClient(token=token),
+                repo_id=repo_id,
+                model_kwargs=model_kwargs or {}
+            )
 
-            @property
-            def _llm_type(self) -> str:
-                return "custom_huggingface_chat"
-
-            def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
-                # This uses the official Zephyr chat template
-                messages = [{"role": "user", "content": prompt}]
-                response = self.client.chat_completion(
-                    messages=messages,
-                    model=self.repo_id,
-                    stream=False,
-                    **self.model_kwargs
-                )
-                return response.choices[0].message.content
-
-            @property
-            def _identifying_params(self) -> Mapping[str, Any]:
-                return {"repo_id": self.repo_id, "model_kwargs": self.model_kwargs}
-        
+        @property
+        def _llm_type(self) -> str: return "custom_huggingface_chat"
+        def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
+            messages = [{"role": "user", "content": prompt}]
+            response = self.client.chat_completion(
+                messages=messages, model=self.repo_id, stream=False, **self.model_kwargs
+            )
+            return response.choices[0].message.content
+        @property
+        def _identifying_params(self) -> Mapping[str, Any]:
+            return {"repo_id": self.repo_id, "model_kwargs": self.model_kwargs}
+    
+    if hf_token:
         llm = HuggingFaceChat(
-            repo_id=llm_repo_id,
-            token=hf_token,
-            model_kwargs={"max_tokens": 1024}
+            repo_id=llm_repo_id, token=hf_token, model_kwargs={"max_tokens": 512}
         )
         
-        # --- NEW: RAG Chain that returns source documents ---
-        def format_docs(docs):
-            return "\n\n".join(doc.page_content for doc in docs)
-
-        # NEW: Zephyr's official prompt template
+        # FIX #1: Improved, stricter prompt template
         prompt_template = """<|system|>
-You are a helpful and concise assistant. Answer the user's question based only on the context provided. If the context does not contain the answer, say "I don't have enough information to answer that question."</s>
+You are an expert assistant. Your task is to answer the user's question based only on the provided context.
+- Be concise and answer directly.
+- Do not add any introductory or concluding remarks.
+- Do not explain your reasoning or mention the context in your answer.
+- If the context does not contain the answer, state only: "The provided documents do not contain the answer to this question."</s>
 <|user|>
 Context:
 {context}
@@ -133,17 +136,14 @@ Question: {question}</s>
 """
         prompt = ChatPromptTemplate.from_template(prompt_template)
 
+        def format_docs(docs):
+            return "\n\n".join(doc.page_content for doc in docs)
+
         rag_chain = {
-            "context": retriever | format_docs,
-            "question": RunnablePassthrough()
+            "context": retriever | format_docs, "question": RunnablePassthrough()
         } | prompt | llm
 
-        # --- Chat Interface ---
         st.subheader("Ask a Question About Your PDFs")
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
-        if "last_retrieved_docs" not in st.session_state:
-            st.session_state.last_retrieved_docs = None
 
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
@@ -156,22 +156,14 @@ Question: {question}</s>
 
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    # Retrieve documents manually to get scores
                     retrieved_docs_with_scores = st.session_state.vectorstore.similarity_search_with_score(query, k=5)
-                    
-                    # Store docs with scores in session state for the "Inspect" button
                     st.session_state.last_retrieved_docs = retrieved_docs_with_scores
                     
-                    # Format the context for the LLM
-                    context = format_docs([doc for doc, score in retrieved_docs_with_scores])
-                    
-                    # Invoke the chain with the manually retrieved context
                     response = rag_chain.invoke(query)
                     st.markdown(response)
                     
             st.session_state.messages.append({"role": "assistant", "content": response})
 
-        # --- NEW: "Inspect Context" button ---
         if st.session_state.last_retrieved_docs:
             if st.button("Inspect Last Retrieved Context"):
                 st.subheader("Last Retrieved Context")
@@ -179,6 +171,5 @@ Question: {question}</s>
                     st.markdown(f"**Chunk {i+1} (Score: {score:.4f})**")
                     st.info(f"Source: {doc.metadata.get('source', 'N/A')} | Page: {doc.metadata.get('page', 'N/A')}")
                     st.caption(doc.page_content)
-
-else:
-    st.info("Please upload PDF files and enter your Hugging Face token to begin.")
+    else:
+        st.warning("Please enter your Hugging Face token in the sidebar to start chatting.")
