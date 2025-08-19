@@ -1,13 +1,14 @@
 streamlit
 langchain
 langchain-community
+langchain-experimental
 chromadb==0.4.24
 pysqlite3-binary
 pypdf
-pymupdf  # <-- ADD THIS LINE
 sentence-transformers
 huggingface_hub
 transformers
 tokenizers
 torch
 numpy==1.26.4
+tiktoken
