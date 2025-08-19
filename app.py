@@ -47,35 +47,36 @@ with st.sidebar:
     if st.button("Validate Token"):
         if hf_token_input:
             try:
-                # Use HfApi for validation, which has the whoami() method
                 HfApi().whoami(token=hf_token_input)
                 st.session_state.token_validated = True
                 st.session_state.hf_token = hf_token_input
                 st.success("Hugging Face token is valid!")
-                st.rerun() # Immediately rerun to update the UI state
+                st.rerun()
             except HfHubHTTPError:
                 st.error("Invalid Hugging Face token. Please check and try again.")
                 st.session_state.token_validated = False
         else:
             st.warning("Please enter a token before validating.")
 
-    if st.session_state.token_validated:
-        st.success("Token Validated!")
-        st.markdown("---")
-        st.markdown("### LLM Selection")
-        llm_repo_id = st.selectbox(
-            "Choose a Language Model:",
-            ("HuggingFaceH4/zephyr-7b-beta", "mistralai/Mixtral-8x7B-Instruct-v0.1"),
-            index=0, help="Zephyr is recommended for speed and reliability."
-        )
-        embedding_model_name = "BAAI/bge-small-en-v1.5"
-        st.info(f"Using `{embedding_model_name}` for embeddings.")
+    st.markdown("---")
+    st.markdown("### LLM Selection")
+    llm_repo_id = st.selectbox(
+        "Choose a Language Model:",
+        ("HuggingFaceH4/zephyr-7b-beta", "mistralai/Mixtral-8x7B-Instruct-v0.1"),
+        index=0,
+        help="Zephyr is recommended for speed and reliability.",
+        disabled=not st.session_state.token_validated
+    )
+    
+    embedding_model_name = "BAAI/bge-small-en-v1.5"
+    st.info(f"Using `{embedding_model_name}` for embeddings.")
+
+    if not st.session_state.token_validated:
+        st.warning("Please validate your token to enable PDF processing and chat.")
     else:
-        st.warning("Please enter your token and click 'Validate Token' to proceed.")
+        st.success("Configuration ready! You can now upload PDFs.")
 
 # --- Main App UI ---
-
-# Step 2: File Uploader
 st.header("Step 2: Upload Your PDFs")
 uploaded_files = st.file_uploader(
     "Upload up to 10 PDF files", 
@@ -87,7 +88,6 @@ if uploaded_files and len(uploaded_files) > 10:
     st.warning("Please upload a maximum of 10 PDF files.")
     uploaded_files = None
 
-# Step 3: Processing Button and Chat
 st.header("Step 3: Process and Chat")
 process_button_disabled = not (st.session_state.token_validated and uploaded_files)
 if st.button("Process PDFs", disabled=process_button_disabled):
@@ -110,7 +110,6 @@ if st.button("Process PDFs", disabled=process_button_disabled):
             st.session_state.vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings)
             st.success("PDFs processed and ready for chat!")
 
-# Main Chat Logic (only runs if vectorstore is ready)
 if st.session_state.vectorstore:
     retriever = st.session_state.vectorstore.as_retriever()
 
