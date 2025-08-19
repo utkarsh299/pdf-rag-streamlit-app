@@ -19,13 +19,13 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 
 # --- Hugging Face Imports ---
-from huggingface_hub import InferenceClient
+from huggingface_hub import InferenceClient, HfApi
 from huggingface_hub.utils import HfHubHTTPError
 
 # --- App Configuration ---
 st.set_page_config(page_title="PDF RAG Assistant", layout="wide")
 st.title("📄 PDF RAG Assistant")
-st.markdown("Welcome! Upload your PDFs and ask questions about their content.")
+st.markdown("Welcome! This app allows you to chat with your PDF documents using open-source models.")
 
 # --- Session State Initialization ---
 if "vectorstore" not in st.session_state:
@@ -34,27 +34,34 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "last_retrieved_docs" not in st.session_state:
     st.session_state.last_retrieved_docs = None
-# NEW: Session state to track token validation
 if "token_validated" not in st.session_state:
     st.session_state.token_validated = False
+if "hf_token" not in st.session_state:
+    st.session_state.hf_token = ""
 
 # --- Sidebar for Configuration ---
 with st.sidebar:
     st.header("Step 1: Configuration")
-    hf_token_input = st.text_input("Enter your Hugging Face API Token:", type="password")
+    hf_token_input = st.text_input("Enter your Hugging Face API Token:", type="password", key="hf_token_input")
     
-    # NEW: Token Validation Logic
-    if hf_token_input and not st.session_state.token_validated:
-        try:
-            InferenceClient(token=hf_token_input).whoami() # Lightweight call to check token validity
-            st.session_state.token_validated = True
-            st.session_state.hf_token = hf_token_input
-            st.success("Hugging Face token validated!")
-        except HfHubHTTPError as e:
-            st.error(f"Invalid Hugging Face token: {e}")
-            st.session_state.token_validated = False
+    if st.button("Validate Token"):
+        if hf_token_input:
+            try:
+                # Use HfApi for validation, which has the whoami() method
+                HfApi().whoami(token=hf_token_input)
+                st.session_state.token_validated = True
+                st.session_state.hf_token = hf_token_input
+                st.success("Hugging Face token is valid!")
+                st.rerun() # Immediately rerun to update the UI state
+            except HfHubHTTPError:
+                st.error("Invalid Hugging Face token. Please check and try again.")
+                st.session_state.token_validated = False
+        else:
+            st.warning("Please enter a token before validating.")
 
     if st.session_state.token_validated:
+        st.success("Token Validated!")
+        st.markdown("---")
         st.markdown("### LLM Selection")
         llm_repo_id = st.selectbox(
             "Choose a Language Model:",
@@ -64,9 +71,9 @@ with st.sidebar:
         embedding_model_name = "BAAI/bge-small-en-v1.5"
         st.info(f"Using `{embedding_model_name}` for embeddings.")
     else:
-        st.warning("Please enter a valid Hugging Face token to proceed.")
+        st.warning("Please enter your token and click 'Validate Token' to proceed.")
 
-# --- Main App Logic ---
+# --- Main App UI ---
 
 # Step 2: File Uploader
 st.header("Step 2: Upload Your PDFs")
@@ -74,21 +81,20 @@ uploaded_files = st.file_uploader(
     "Upload up to 10 PDF files", 
     type="pdf", 
     accept_multiple_files=True,
-    disabled=not st.session_state.token_validated # Disable until token is valid
+    disabled=not st.session_state.token_validated
 )
 if uploaded_files and len(uploaded_files) > 10:
     st.warning("Please upload a maximum of 10 PDF files.")
     uploaded_files = None
 
-# Step 3: Processing Button
+# Step 3: Processing Button and Chat
 st.header("Step 3: Process and Chat")
 process_button_disabled = not (st.session_state.token_validated and uploaded_files)
 if st.button("Process PDFs", disabled=process_button_disabled):
     if st.session_state.vectorstore is not None:
         st.session_state.vectorstore.delete_collection()
-        st.session_state.vectorstore = None
-        st.session_state.messages = []
-        st.session_state.last_retrieved_docs = None
+    st.session_state.messages = []
+    st.session_state.last_retrieved_docs = None
 
     with tempfile.TemporaryDirectory() as temp_dir:
         for uploaded_file in uploaded_files:
@@ -102,7 +108,7 @@ if st.button("Process PDFs", disabled=process_button_disabled):
         with st.spinner("Creating embeddings and vector store..."):
             embeddings = HuggingFaceEmbeddings(model_name=embedding_model_name)
             st.session_state.vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings)
-            st.success("PDFs processed and ready!")
+            st.success("PDFs processed and ready for chat!")
 
 # Main Chat Logic (only runs if vectorstore is ready)
 if st.session_state.vectorstore:
@@ -141,7 +147,7 @@ Question: {question}</s>
 
     rag_chain = {"context": retriever | format_docs, "question": RunnablePassthrough()} | prompt | llm
 
-    st.subheader("Ask a Question About Your PDFs")
+    st.subheader("Ask a Question")
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
