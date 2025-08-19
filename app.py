@@ -15,7 +15,8 @@ from langchain_core.language_models.llms import LLM
 from langchain.schema.runnable import RunnablePassthrough
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFDirectoryLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+# --- NEW IMPORT for Semantic Chunker ---
+from langchain_experimental.text_splitter import SemanticChunker
 from langchain_community.vectorstores import Chroma
 
 # --- Hugging Face Imports ---
@@ -39,7 +40,7 @@ if "token_validated" not in st.session_state:
 if "hf_token" not in st.session_state:
     st.session_state.hf_token = ""
 
-# --- Sidebar for Configuration ---
+# --- Sidebar (remains the same) ---
 with st.sidebar:
     st.header("Step 1: Configuration")
     hf_token_input = st.text_input("Enter your Hugging Face API Token:", type="password", key="hf_token_input")
@@ -76,7 +77,8 @@ with st.sidebar:
     else:
         st.success("Configuration ready! You can now upload PDFs.")
 
-# --- Main App UI ---
+
+# --- File Uploader (remains the same) ---
 st.header("Step 2: Upload Your PDFs")
 uploaded_files = st.file_uploader(
     "Upload up to 10 PDF files", 
@@ -88,6 +90,7 @@ if uploaded_files and len(uploaded_files) > 10:
     st.warning("Please upload a maximum of 10 PDF files.")
     uploaded_files = None
 
+# --- PDF Processing Button ---
 st.header("Step 3: Process and Chat")
 process_button_disabled = not (st.session_state.token_validated and uploaded_files)
 if st.button("Process PDFs", disabled=process_button_disabled):
@@ -103,14 +106,22 @@ if st.button("Process PDFs", disabled=process_button_disabled):
         with st.spinner("Loading and chunking documents..."):
             loader = PyPDFDirectoryLoader(temp_dir)
             docs = loader.load()
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            splits = text_splitter.split_documents(docs)
-        with st.spinner("Creating embeddings and vector store..."):
+            
+            # --- START OF THE FIX: Use SemanticChunker ---
             embeddings = HuggingFaceEmbeddings(model_name=embedding_model_name)
+            text_splitter = SemanticChunker(embeddings)
+            # --- END OF THE FIX ---
+            
+            splits = text_splitter.split_documents(docs)
+            
+        with st.spinner("Creating embeddings and vector store..."):
+            # We already created the embedding object, so we can reuse it
             st.session_state.vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings)
             st.success("PDFs processed and ready for chat!")
 
+# --- Main Chat Logic (remains the same) ---
 if st.session_state.vectorstore:
+    # (The rest of the code is identical to the previous version)
     retriever = st.session_state.vectorstore.as_retriever()
 
     class HuggingFaceChat(LLM):
